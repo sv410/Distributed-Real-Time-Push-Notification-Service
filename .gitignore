@@ -1,10 +1,23 @@
-# Build artifacts
-/bin/
-/vendor/
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
 
-# Test coverage files
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
 *.coverage
 coverage.out
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
 
 # Environment files
 .env
@@ -33,6 +46,10 @@ logs/
 # Temporary files
 /tmp/
 *.tmp
+
+# Build artifacts
+/bin/
+/dist/
 
 # Docker
 .dockerignore

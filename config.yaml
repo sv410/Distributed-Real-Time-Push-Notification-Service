@@ -3,13 +3,13 @@ server:
   port: "8080"
 
 kafka:
-  bootstrap_servers: "localhost:9092"
+  bootstrap_servers: "kafka:9092"
   topic: "push-notifications"
   group_id: "notification-consumer-group"
   auto_offset_reset: "earliest"
 
 redis:
-  host: "localhost"
+  host: "redis"
   port: "6379"
   password: ""
   db: 0
