@@ -1,6 +1,7 @@
 version: '3.8'
 
 services:
+  # Zookeeper for Kafka
   zookeeper:
     image: confluentinc/cp-zookeeper:7.4.0
     hostname: zookeeper
@@ -10,9 +11,13 @@ services:
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_logs:/var/lib/zookeeper/log
     networks:
       - notification-network
 
+  # Kafka
   kafka:
     image: confluentinc/cp-kafka:7.4.0
     hostname: kafka
@@ -21,61 +26,108 @@ services:
       - zookeeper
     ports:
       - "9092:9092"
+      - "9997:9997"
     environment:
       KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,PLAINTEXT_HOST://kafka:29092
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_HOST
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-      KAFKA_CONFLUENT_SCHEMA_REGISTRY_URL: http://schema-registry:8081
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      KAFKA_JMX_PORT: 9997
+      KAFKA_JMX_HOSTNAME: localhost
+    volumes:
+      - kafka_data:/var/lib/kafka/data
     networks:
       - notification-network
 
+  # Redis
   redis:
-    image: redis:7.2-alpine
+    image: redis:7-alpine
     hostname: redis
     container_name: redis
     ports:
       - "6379:6379"
-    command: redis-server --appendonly yes
     volumes:
-      - redis-data:/data
+      - redis_data:/data
+    command: redis-server --appendonly yes
     networks:
       - notification-network
 
+  # API Gateway
+  api-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.api-gateway
+    container_name: api-gateway
+    ports:
+      - "8080:8080"
+    depends_on:
+      - kafka
+      - redis
+    environment:
+      - CONFIG_FILE=/root/config.yaml
+    volumes:
+      - ./config.yaml:/root/config.yaml
+    restart: unless-stopped
+    networks:
+      - notification-network
+
+  # Consumer Service
+  consumer:
+    build:
+      context: .
+      dockerfile: Dockerfile.consumer
+    depends_on:
+      - kafka
+      - redis
+    environment:
+      - CONFIG_FILE=/root/config.yaml
+    volumes:
+      - ./config.yaml:/root/config.yaml
+    restart: unless-stopped
+    deploy:
+      replicas: 3  # Multiple instances for high throughput
+    networks:
+      - notification-network
+
+  # Kafka UI for monitoring
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     hostname: kafka-ui
     container_name: kafka-ui
-    depends_on:
-      - kafka
     ports:
-      - "9080:8080"
+      - "8081:8080"
     environment:
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
       KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    depends_on:
+      - kafka
     networks:
       - notification-network
 
+  # Redis Commander for Redis monitoring
   redis-commander:
     image: rediscommander/redis-commander:latest
     hostname: redis-commander
     container_name: redis-commander
+    ports:
+      - "8082:8081"
+    environment:
+      - REDIS_HOSTS=local:redis:6379
     depends_on:
       - redis
-    ports:
-      - "8081:8081"
-    environment:
-      REDIS_HOSTS: local:redis:6379
     networks:
       - notification-network
 
 volumes:
-  redis-data:
+  zookeeper_data:
+  zookeeper_logs:
+  kafka_data:
+  redis_data:
 
 networks:
   notification-network:

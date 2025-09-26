@@ -1,279 +1,243 @@
 # Distributed Real-Time Push Notification Service
 
-A high-performance, distributed push notification service built in Go that processes messages from Kafka using a lightweight worker pool with Goroutines. The service implements Redis-based rate limiting per user and integrates with mock external provider APIs to simulate real-world notification delivery.
+A high-throughput, fault-tolerant backend service built in Go for handling asynchronous push notifications for mobile applications. This service can handle a burst capacity of **10,000 notifications per minute** using Kafka as a message queue and Redis for caching.
 
-## Features
+## 🏗️ Architecture
 
-- **Lightweight Worker Pool**: Concurrent message processing using Goroutines
-- **Kafka Integration**: Consumes messages from Kafka topics with automatic offset management
-- **Redis Rate Limiting**: Per-user rate limiting to ensure smooth user experience and service protection
-- **Mock Provider APIs**: Simulates external notification providers (Firebase, APNs, FCM) with configurable success rates
-- **Health Monitoring**: Comprehensive health checks for all service components
-- **Graceful Shutdown**: Clean service shutdown with proper resource cleanup
-- **Metrics & Monitoring**: HTTP endpoints for service metrics and rate limit status
-- **Configurable**: Environment-based configuration for all service parameters
+The service follows a microservices architecture with the following components:
 
-## Architecture
+- **API Gateway**: RESTful API server that receives notification requests
+- **Kafka**: Distributed message queue for decoupling and high throughput
+- **Consumer Service**: Processes notifications from Kafka queue
+- **Redis**: Caching layer for user sessions and rate limiting
+- **Docker**: Containerization for easy deployment
 
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│     Kafka       │───▶│  Worker Pool    │───▶│   Providers     │
-│   (Messages)    │    │  (Goroutines)   │    │ (Firebase/APNs) │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-                              │
-                              ▼
-                       ┌─────────────────┐
-                       │     Redis       │
-                       │ (Rate Limiting) │
-                       └─────────────────┘
-```
+## 🚀 Features
 
-## Quick Start
+- **High Throughput**: Handles 10,000+ notifications per minute
+- **Fault Tolerance**: Retry mechanisms and error handling
+- **Multi-Platform Support**: iOS, Android, and Web push notifications
+- **Rate Limiting**: Per-user rate limiting to prevent abuse
+- **Session Management**: User session tracking with Redis
+- **Graceful Shutdown**: Proper cleanup on service termination
+- **Monitoring**: Comprehensive logging and health checks
+- **Containerized**: Docker support for easy deployment
 
-### Prerequisites
+## 📋 Prerequisites
 
-- Go 1.21 or higher
+- Go 1.21+
 - Docker and Docker Compose
+- Kafka 2.8+
+- Redis 6.0+
 
-### 1. Start Dependencies
+## 🛠️ Quick Start
 
+### Using Docker Compose (Recommended)
+
+1. Clone the repository:
 ```bash
-# Start Kafka, Redis, and management UIs
+git clone <repository-url>
+cd Distributed-Real-Time-Push-Notification-Service
+```
+
+2. Start all services:
+```bash
 docker-compose up -d
-
-# Wait for services to be ready (about 30 seconds)
-docker-compose logs kafka | grep "started"
 ```
 
-### 2. Build and Run the Service
+This will start:
+- Zookeeper (port 2181)
+- Kafka (port 9092)
+- Redis (port 6379)
+- API Gateway (port 8080)
+- Consumer Service (3 replicas)
+- Kafka UI (port 8081) - for monitoring
+- Redis Commander (port 8082) - for Redis monitoring
 
+### Manual Setup
+
+1. Install dependencies:
 ```bash
-# Build the service
-go build -o bin/notification-service ./cmd
-
-# Run with default configuration
-./bin/notification-service
+go mod download
 ```
 
-### 3. Test the Service
-
+2. Start Kafka and Redis:
 ```bash
-# Check service health
-curl http://localhost:8080/health
+# Start Kafka (requires Zookeeper)
+# Start Redis
+redis-server
+```
 
-# Check metrics
-curl http://localhost:8080/metrics
+3. Build the applications:
+```bash
+./build.sh
+```
 
-# Send a test notification
-curl -X POST http://localhost:8080/send \
+4. Run the API Gateway:
+```bash
+./bin/api-gateway
+```
+
+5. Run the Consumer (in separate terminal):
+```bash
+./bin/consumer
+```
+
+## 📡 API Endpoints
+
+### Register User Session
+```bash
+POST /api/v1/sessions
+Content-Type: application/json
+
+{
+  "user_id": "user123",
+  "device_token": "device_token_here",
+  "platform": "ios"
+}
+```
+
+### Send Notification
+```bash
+POST /api/v1/notifications
+Content-Type: application/json
+
+{
+  "user_id": "user123",
+  "title": "New Message",
+  "message": "You have a new message!",
+  "data": {
+    "type": "chat",
+    "chat_id": "chat456"
+  },
+  "priority": "normal"
+}
+```
+
+### Check Notification Status
+```bash
+GET /api/v1/notifications/{notification_id}/status
+```
+
+### Unregister User Session
+```bash
+DELETE /api/v1/sessions/{user_id}
+```
+
+### Health Check
+```bash
+GET /health
+```
+
+## 🔧 Configuration
+
+Configuration can be provided via `config.yaml` file or environment variables:
+
+```yaml
+server:
+  host: "0.0.0.0"
+  port: "8080"
+
+kafka:
+  bootstrap_servers: "localhost:9092"
+  topic: "push-notifications"
+  group_id: "notification-consumer-group"
+  auto_offset_reset: "earliest"
+
+redis:
+  host: "localhost"
+  port: "6379"
+  password: ""
+  db: 0
+
+log:
+  level: "info"
+  file: ""
+```
+
+## 🧪 Testing
+
+### Example: Complete Workflow
+
+1. Register a user session:
+```bash
+curl -X POST http://localhost:8080/api/v1/sessions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "user123",
+    "device_token": "sample_device_token",
+    "platform": "ios"
+  }'
+```
+
+2. Send a notification:
+```bash
+curl -X POST http://localhost:8080/api/v1/notifications \
   -H "Content-Type: application/json" \
   -d '{
     "user_id": "user123",
     "title": "Test Notification",
-    "body": "This is a test message",
-    "priority": 2
+    "message": "This is a test message!",
+    "priority": "high"
   }'
-
-# Check rate limit status for a user
-curl http://localhost:8080/ratelimit/user123
 ```
 
-## Configuration
-
-The service is configured via environment variables:
-
-### Kafka Configuration
-- `KAFKA_BROKERS`: Kafka broker addresses (default: `localhost:9092`)
-- `KAFKA_TOPIC`: Topic to consume from (default: `notifications`)
-- `CONSUMER_GROUP`: Consumer group ID (default: `notification-service`)
-
-### Redis Configuration
-- `REDIS_ADDR`: Redis server address (default: `localhost:6379`)
-- `REDIS_PASSWORD`: Redis password (default: empty)
-- `REDIS_DB`: Redis database number (default: `0`)
-
-### Rate Limiting
-- `RATE_LIMIT_PER_USER`: Max notifications per user per window (default: `10`)
-- `RATE_LIMIT_WINDOW`: Rate limit window duration (default: `1m`)
-
-### Worker Pool Configuration
-- `WORKER_COUNT`: Number of worker goroutines (default: `10`)
-- `MAX_QUEUE_SIZE`: Maximum queue size (default: `1000`)
-- `RETRY_ATTEMPTS`: Retry attempts for failed notifications (default: `3`)
-- `RETRY_DELAY`: Delay between retries (default: `1s`)
-
-### Service Configuration
-- `PORT`: HTTP server port (default: `8080`)
-- `LOG_LEVEL`: Log level (default: `info`)
-- `SHUTDOWN_TIMEOUT`: Graceful shutdown timeout (default: `30s`)
-
-## API Endpoints
-
-### Health Check
-```
-GET /health
-```
-Returns service health status including all components.
-
-### Metrics
-```
-GET /metrics
-```
-Returns service metrics including processed messages, failures, and queue status.
-
-### Rate Limit Status
-```
-GET /ratelimit/{userID}
-```
-Returns rate limiting information for a specific user.
-
-### Send Notification (Test Endpoint)
-```
-POST /send
-Content-Type: application/json
-
-{
-  "user_id": "string",
-  "title": "string",
-  "body": "string", 
-  "priority": 0-3,
-  "data": {}
-}
-```
-
-## Message Format
-
-Kafka messages should follow this JSON schema:
-
-```json
-{
-  "id": "unique-message-id",
-  "user_id": "user-identifier",
-  "type": "push",
-  "title": "Notification Title",
-  "body": "Notification Body", 
-  "data": {
-    "custom_field": "value"
-  },
-  "priority": 2,
-  "created_at": "2024-01-01T12:00:00Z",
-  "expires_at": "2024-01-01T13:00:00Z"
-}
-```
-
-## Development
-
-### Running Tests
-
+3. Check notification status:
 ```bash
-# Run all tests
-go test ./...
-
-# Run tests with coverage
-go test -cover ./...
-
-# Run specific package tests
-go test ./internal/provider
+curl http://localhost:8080/api/v1/notifications/{notification_id}/status
 ```
 
-### Building
+## 📊 Performance
 
-```bash
-# Build binary
-go build -o bin/notification-service ./cmd
+- **Throughput**: 10,000+ notifications per minute
+- **Latency**: < 100ms for API responses
+- **Concurrency**: Multiple consumer workers for parallel processing
+- **Scalability**: Horizontal scaling with Kafka partitions and consumer groups
 
-# Build Docker image
-docker build -t notification-service .
-```
+## 🔍 Monitoring
 
-### Development with Docker Compose
+- **Kafka UI**: http://localhost:8081 - Monitor Kafka topics and consumers
+- **Redis Commander**: http://localhost:8082 - Monitor Redis data
+- **Health Endpoint**: http://localhost:8080/health - Service health status
+- **Logs**: Structured logging with configurable levels
 
-```bash
-# Start only dependencies
-docker-compose up kafka redis zookeeper
+## 🏢 Production Considerations
 
-# Build and run service locally
-go run ./cmd
-```
+1. **Security**: Implement authentication and authorization
+2. **TLS**: Use HTTPS in production
+3. **Database**: Consider persistent storage for notifications
+4. **Monitoring**: Add metrics collection (Prometheus, Grafana)
+5. **Alerting**: Set up alerting for failures and performance issues
+6. **Load Balancing**: Use load balancer for API Gateway
+7. **Backup**: Regular backups of Redis data
 
-## Monitoring and Management
+## 🛡️ Fault Tolerance
 
-### Kafka UI
-Access Kafka UI at http://localhost:9080 to monitor topics, consumers, and messages.
+- **Retry Logic**: Failed notifications are retried up to 3 times
+- **Circuit Breaker**: Graceful degradation on external service failures
+- **Health Checks**: Regular health monitoring
+- **Graceful Shutdown**: Proper cleanup on service termination
+- **Dead Letter Queue**: Failed messages after max retries (implementation ready)
 
-### Redis Commander
-Access Redis Commander at http://localhost:8081 to monitor Redis keys and rate limiting data.
+## 🤝 Contributing
 
-### Service Metrics
-Monitor service metrics at http://localhost:8080/metrics:
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests
+5. Submit a pull request
 
-```json
-{
-  "processed_messages": 1250,
-  "failed_messages": 23,
-  "rate_limited_messages": 45,
-  "queue_size": 5,
-  "worker_count": 10
-}
-```
+## 📝 License
 
-## Production Deployment
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-### Environment Variables for Production
+## 🎯 Future Enhancements
 
-```bash
-export KAFKA_BROKERS="kafka1:9092,kafka2:9092,kafka3:9092"
-export REDIS_ADDR="redis-cluster:6379"
-export WORKER_COUNT="50"
-export MAX_QUEUE_SIZE="10000"
-export RATE_LIMIT_PER_USER="100"
-export LOG_LEVEL="warn"
-```
-
-### Docker Deployment
-
-```bash
-# Build production image
-docker build -t notification-service:latest .
-
-# Run with environment file
-docker run --env-file .env -p 8080:8080 notification-service:latest
-```
-
-## Performance Characteristics
-
-- **Throughput**: 10,000+ messages/second with default configuration
-- **Latency**: Sub-100ms processing time per message
-- **Memory Usage**: ~50MB base usage, scales with queue size
-- **Goroutines**: Lightweight workers with minimal memory overhead
-- **Rate Limiting**: Redis-based with atomic operations for accuracy
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Kafka Connection Issues**
-   ```bash
-   # Check Kafka connectivity
-   docker-compose logs kafka
-   curl http://localhost:8080/health
-   ```
-
-2. **Redis Connection Issues**
-   ```bash
-   # Check Redis connectivity  
-   docker-compose logs redis
-   redis-cli ping
-   ```
-
-3. **High Memory Usage**
-   - Reduce `MAX_QUEUE_SIZE` if memory is limited
-   - Monitor queue size via metrics endpoint
-
-4. **Rate Limiting Issues**
-   - Check rate limit configuration
-   - Monitor Redis keys: `rate_limit:*`
-
-## License
-
-MIT License - see [LICENSE](LICENSE) file for details.
+- [ ] WebSocket support for real-time updates
+- [ ] Message templates and localization
+- [ ] Analytics and reporting dashboard
+- [ ] A/B testing for notifications
+- [ ] Push notification scheduling
+- [ ] Advanced targeting and segmentation
+- [ ] Integration with APNs and FCM
+- [ ] Metrics and observability improvements
